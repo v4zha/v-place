@@ -1,6 +1,6 @@
 .direnv
 result
-
+.env
 
 # Added by cargo
 

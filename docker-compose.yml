@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+      
+  scylla:
+    image: scylladb/scylla
+    ports:
+      - "9042:9042"

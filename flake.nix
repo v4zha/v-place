@@ -27,6 +27,8 @@
             rust-analyzer
             lldb
             mold
+            taplo
+            yaml-language-server
           ];
         };
       }
