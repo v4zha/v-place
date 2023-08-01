@@ -1,5 +1,5 @@
 {
-  description = "e/place rust flake";
+  description = "v-place rust flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

@@ -38,7 +38,7 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Error connecting to ScyllaDB");
     let scylla = Arc::new(scylla_session);
-    log::info!("e-place server listening on : {}", host_port);
+    log::info!("v-place server listening on : {}", host_port);
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(redis.clone()))
