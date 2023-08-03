@@ -13,6 +13,7 @@
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
           inherit system overlays;
+          # config.allowUnfree=true;
         };
         rust-toolchain = pkgs.rust-bin.selectLatestNightlyWith
           (toolchain: toolchain.default.override {

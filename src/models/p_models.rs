@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct UpdatePixel<'a> {
-    uname: Option<Cow<'a, str>>,
+    pub uname: Option<Cow<'a, str>>,
     // coordinates : (x,y)
-    loc: (u32, u32),
-    color: u8,
+    pub loc: (u32, u32),
+    pub color: u8,
 }
 
 #[derive(Serialize)]
@@ -24,11 +24,11 @@ pub struct CanvasResponse<'a> {
 pub struct AppState<'a> {
     pub canvas_id: Cow<'a, str>,
     // dim*dim is the the real dimension of canvas
-    pub canvas_dim: usize,
+    pub canvas_dim: u32,
     pub cooldown: usize,
 }
 impl<'a> AppState<'a> {
-    pub fn new(canvas_id: Cow<'a, str>, canvas_dim: usize, cooldown: usize) -> Self {
+    pub fn new(canvas_id: Cow<'a, str>, canvas_dim: u32, cooldown: usize) -> Self {
         Self {
             canvas_id,
             canvas_dim,

@@ -13,9 +13,10 @@ use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
 use scylla::SessionBuilder;
 
-use crate::handlers::p_handlers::vplace;
+use crate::handlers::p_handlers::{vplace, update_pixel};
 use crate::models::p_models::{AppState, PuSrv};
 use crate::services::p_services::init_canvas;
+
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 #[actix_web::main]
@@ -30,11 +31,12 @@ async fn main() -> std::io::Result<()> {
     let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://0.0.0.0:6379".to_string());
     let scylla_url = env::var("SCYLLA_URL").unwrap_or_else(|_| "0.0.0.0:9042".to_string());
     let canvas_dim =
-        env::var("CANVAS_DIM").map_or(500, |count| count.parse::<usize>().unwrap_or(500));
+        env::var("CANVAS_DIM").map_or(500, |count| count.parse::<u32>().unwrap_or(500));
     let canvas_id = env::var("CANVAS_ID").unwrap_or_else(|_| "vplace_1".to_string());
     let cooldown = env::var("COOLDOWN").map_or(60, |c| c.parse::<usize>().unwrap_or(60));
     let host_port = format!("{}:{}", host, port);
-    let redis = redis::Client::open(redis_url).expect("Error connecting to RedisDB");
+    let redis_client = redis::Client::open(redis_url).expect("Error connecting to RedisDB");
+    let redis = web::Data::new(redis_client);
     let scylla_session = SessionBuilder::new()
         .known_node(scylla_url)
         .build()
@@ -58,6 +60,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Cors::permissive())
             .service(vplace)
             .service(get_canvas)
+            .service(update_pixel)
     })
     .bind(host_port)?
     .run()

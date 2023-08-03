@@ -5,6 +5,7 @@ use redis::RedisError;
 
 #[derive(Debug)]
 pub enum VpError {
+    InitCanvasErr,
     RedisErr(RedisError),
     // ScyllaErr(&'a str),
 }
@@ -20,6 +21,7 @@ impl Display for VpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use VpError::*;
         match self {
+            InitCanvasErr => write!(f, "Unable to initialize canvas"),
             RedisErr(e) => write!(f, "[Redis Error]: {}", e),
             // ScyllaErr(e) => write!(f, "[Scylla Error]: {}", e),
         }
