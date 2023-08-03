@@ -29,6 +29,7 @@
             mold
             taplo
             yaml-language-server
+            redli
           ];
         };
       }
