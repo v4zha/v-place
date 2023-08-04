@@ -9,7 +9,6 @@ edition = "2021"
 actix-web = "^4.3"
 serde = { version = "^1.0", features = ['derive'] }
 serde_json = "^1.0"
-serde_repr = "^0.1"
 log = "^0.4"
 env_logger = "^0.10"
 dotenvy = "^0.15"
@@ -22,7 +21,8 @@ redis = { version = "^0.23", default-features = false, features = [
 ] }
 scylla = "^0.9"
 actix-cors = "0.6"
-chrono = "^0.4"
-mimalloc={version="^0.1",default-features=false}
+chrono = { version = "^0.4", default-features = false }
+mimalloc = { version = "^0.1", default-features = false }
+num_cpus = "^1.16"
 [profile.dev.package.backtrace]
 opt-level = 3

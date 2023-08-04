@@ -1,4 +1,3 @@
-extern crate redis;
 mod handlers;
 mod models;
 mod services;
@@ -13,9 +12,9 @@ use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
 use scylla::SessionBuilder;
 
-use crate::handlers::p_handlers::{vplace, update_pixel};
+use crate::handlers::p_handlers::{update_pixel, vplace};
 use crate::models::p_models::{AppState, PuSrv};
-use crate::services::p_services::init_canvas;
+use crate::services::p_services::init_place;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -45,11 +44,13 @@ async fn main() -> std::io::Result<()> {
     let scylla = web::Data::new(scylla_session);
     let app_state = web::Data::new(AppState::new(canvas_id.into(), canvas_dim, cooldown));
     let pu_srv = PuSrv::new().start();
-    init_canvas(&app_state, &redis)
+    init_place(&app_state, &redis, &scylla)
         .await
         .expect("Error Initialising Canvas");
     log::debug!("Canvas {} Initialised.", app_state.canvas_id);
+    log::debug!("Canvas Dimension : {}x{}",app_state.canvas_dim,app_state.canvas_dim);
     log::info!("v-place server listening on : {}", host_port);
+    let cpus = num_cpus::get();
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
@@ -63,6 +64,7 @@ async fn main() -> std::io::Result<()> {
             .service(update_pixel)
     })
     .bind(host_port)?
+    .workers(cpus * 2)
     .run()
     .await
 }
