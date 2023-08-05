@@ -17,7 +17,6 @@ pub enum VpError {
     ScyllaTypeErr(FirstRowTypedError),
     ScyllaSessionErr(NewSessionError),
     ParseIntErr(TryFromIntError),
-    NoUserFound,
 }
 impl Error for VpError {}
 
@@ -66,9 +65,6 @@ impl Display for VpError {
             ParseIntErr(e) => write!(f, "[Error parsing Int]: {}", e),
             CanvasSizeMismatch => {
                 write!(f, "[Canvas Size Mismatch]: Enter (x,y) < Canvas Dimension")
-            }
-            NoUserFound => {
-                write!(f, "No User Found!")
             }
         }
     }

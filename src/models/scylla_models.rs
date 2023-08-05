@@ -51,7 +51,7 @@ impl ScyllaManager {
         let res = rows.first_row_typed::<UserDetails>();
         match res {
             Ok(res) => Ok(res),
-            Err(FirstRowTypedError::RowsEmpty) => Err(VpError::NoUserFound),
+            Err(FirstRowTypedError::RowsEmpty) => Err(VpError::InvalidUser),
             Err(e) => Err(VpError::ScyllaTypeErr(e)),
         }
     }
