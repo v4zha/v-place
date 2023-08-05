@@ -1,13 +1,18 @@
+use std::borrow::Cow;
+
 use actix::{Addr, Handler, StreamHandler};
 use actix_web::{get, post, web, Either, HttpRequest, HttpResponse, Responder};
 use actix_web_actors::ws;
+use base64::engine::general_purpose;
+use base64::Engine;
 use chrono::Utc;
 use redis::Client;
 use scylla::Session;
 
 use crate::models::err_models::VpError;
 use crate::models::p_models::{
-    AppState, CanvasResponse, PuConnect, PuDisconnect, PuListener, PuSrv, UpdatePixel, WaitTime,
+    AppState, CanvasResponse, PuConnect, PuDisconnect, PuListener, PuRes, PuSrv, UpdatePixel,
+    WaitTime,
 };
 use crate::services::p_services::diff_last_placed;
 
@@ -21,13 +26,15 @@ async fn get_canvas(
         .await
         .map_err(VpError::RedisErr)?;
     let res = redis::Cmd::get(app_data.canvas_id.as_bytes())
-        .query_async::<_, String>(&mut conn)
+        .query_async::<_, Vec<u8>>(&mut conn)
         .await
         .map_err(VpError::RedisErr)?;
+    //base64 encode the bytearray
+    let resb64 = general_purpose::STANDARD_NO_PAD.encode(res);
     Ok(HttpResponse::Ok().json(CanvasResponse {
         id: app_data.canvas_id.as_ref(),
         dim: app_data.canvas_dim,
-        canvas: &res,
+        canvas: &resb64,
     }))
 }
 
@@ -46,6 +53,7 @@ async fn update_pixel(
     app_data: web::Data<AppState<'_>>,
     redis: web::Data<Client>,
     scylla: web::Data<Session>,
+    pu_srv: web::Data<Addr<PuSrv<'_>>>,
 ) -> actix_web::Result<impl Responder> {
     let req = update_req.into_inner();
     let mut conn = redis
@@ -78,6 +86,14 @@ async fn update_pixel(
                     scylla .query("INSERT INTO vplace.player (id, uname, x, y, color, last_placed) VALUES (?, ?, ?, ?, ?, ?)",
             (req.uid, req.uname,ix,iy,ic, Utc::now().timestamp()),
         ).await.map_err(VpError::ScyllaQueryErr)?;
+                    // uid and uname not send to client : )
+                    // pixel based query will be added as different endpoint : )
+                    pu_srv.do_send(UpdatePixel {
+                        uid: None,
+                        uname: None,
+                        loc: req.loc,
+                        color: req.color,
+                    });
                     Ok(Either::Left(HttpResponse::Ok()))
                 } else {
                     Ok(Either::Right(HttpResponse::Forbidden().json(WaitTime {
@@ -124,5 +140,26 @@ impl Handler<PuDisconnect<'_>> for PuSrv<'_> {
             "Client Disconnected.Total connection count : {}",
             self.listeners.len()
         );
+    }
+}
+
+impl Handler<UpdatePixel> for PuSrv<'_> {
+    type Result = ();
+
+    fn handle(&mut self, msg: UpdatePixel, _ctx: &mut Self::Context) -> Self::Result {
+        if let Ok(res) = serde_json::to_string(&msg) {
+            let msg = Cow::from(res);
+            self.listeners
+                .iter()
+                .for_each(|addr| addr.do_send(PuRes(msg.clone())));
+        }
+    }
+}
+
+impl Handler<PuRes<'_>> for PuListener<'_> {
+    type Result = ();
+
+    fn handle(&mut self, msg: PuRes, ctx: &mut Self::Context) -> Self::Result {
+        ctx.text(msg.0.as_ref());
     }
 }

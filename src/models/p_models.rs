@@ -8,6 +8,8 @@ use scylla::FromRow;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Message)]
+#[rtype(result = "()")]
 #[derive(Serialize, Deserialize)]
 pub struct UpdatePixel {
     pub uid: Option<Uuid>,
@@ -35,8 +37,8 @@ pub struct WaitTime {
 pub struct UserDetails {
     pub id: Uuid,
     pub name: String,
-    pub x: i32,    //u32 aan sherikkum , but CQL derive does'nt support : )
-    pub y: i32,    // same as above : )
+    pub x: i32,     //u32 aan sherikkum , but CQL derive does'nt support : )
+    pub y: i32,     // same as above : )
     pub color: i32, // sherikkum u8
     pub last_placed: i64,
 }
@@ -90,6 +92,10 @@ pub struct PuConnect<'a: 'static>(pub Addr<PuListener<'a>>);
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct PuDisconnect<'a: 'static>(pub Addr<PuListener<'a>>);
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct PuRes<'a>(pub Cow<'a, str>);
 
 impl<'a> Actor for PuListener<'a> {
     type Context = ws::WebsocketContext<Self>;

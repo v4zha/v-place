@@ -1891,6 +1891,7 @@ dependencies = [
  "actix-cors",
  "actix-web",
  "actix-web-actors",
+ "base64",
  "chrono",
  "dotenvy",
  "env_logger",

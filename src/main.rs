@@ -48,7 +48,11 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Error Initialising Canvas");
     log::debug!("Canvas {} Initialised.", app_state.canvas_id);
-    log::debug!("Canvas Dimension : {}x{}",app_state.canvas_dim,app_state.canvas_dim);
+    log::debug!(
+        "Canvas Dimension : {}x{}",
+        app_state.canvas_dim,
+        app_state.canvas_dim
+    );
     log::info!("v-place server listening on : {}", host_port);
     let cpus = num_cpus::get();
     HttpServer::new(move || {
