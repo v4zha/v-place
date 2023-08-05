@@ -5,15 +5,14 @@ use actix_web::{get, post, web, Either, HttpRequest, HttpResponse, Responder};
 use actix_web_actors::ws;
 use base64::engine::general_purpose;
 use base64::Engine;
-use chrono::Utc;
 use redis::Client;
-use scylla::Session;
 
 use crate::models::err_models::VpError;
 use crate::models::p_models::{
     AppState, CanvasResponse, PuConnect, PuDisconnect, PuListener, PuRes, PuSrv, UpdatePixel,
     WaitTime,
 };
+use crate::models::scylla_models::ScyllaManager;
 use crate::services::p_services::diff_last_placed;
 
 #[get("/canvas")]
@@ -52,7 +51,7 @@ async fn update_pixel(
     update_req: web::Json<UpdatePixel>,
     app_data: web::Data<AppState<'_>>,
     redis: web::Data<Client>,
-    scylla: web::Data<Session>,
+    scylla: web::Data<ScyllaManager>,
     pu_srv: web::Data<Addr<PuSrv<'_>>>,
 ) -> actix_web::Result<impl Responder> {
     let req = update_req.into_inner();
@@ -80,12 +79,7 @@ async fn update_pixel(
                         .await
                         .map_err(VpError::RedisErr)?;
                     // update user timestamp in scylladb
-                    let ix = i32::try_from(req.loc.0).map_err(VpError::ParseIntErr)?;
-                    let iy = i32::try_from(req.loc.1).map_err(VpError::ParseIntErr)?;
-                    let ic = i32::try_from(req.color)?;
-                    scylla .query("INSERT INTO vplace.player (id, uname, x, y, color, last_placed) VALUES (?, ?, ?, ?, ?, ?)",
-            (req.uid, req.uname,ix,iy,ic, Utc::now().timestamp()),
-        ).await.map_err(VpError::ScyllaQueryErr)?;
+                    scylla.set_user(&req).await?;
                     // uid and uname not send to client : )
                     // pixel based query will be added as different endpoint : )
                     pu_srv.do_send(UpdatePixel {

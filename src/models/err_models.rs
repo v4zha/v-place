@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::num::TryFromIntError;
 
 use redis::RedisError;
-use scylla::transport::errors::QueryError;
+use scylla::transport::errors::{NewSessionError, QueryError};
 use scylla::transport::query_result::FirstRowTypedError;
 
 #[derive(Debug)]
@@ -15,7 +15,9 @@ pub enum VpError {
     InvalidUser,
     ScyllaQueryErr(QueryError),
     ScyllaTypeErr(FirstRowTypedError),
+    ScyllaSessionErr(NewSessionError),
     ParseIntErr(TryFromIntError),
+    NoUserFound,
 }
 impl Error for VpError {}
 
@@ -41,6 +43,12 @@ impl From<TryFromIntError> for VpError {
     }
 }
 
+impl From<NewSessionError> for VpError {
+    fn from(err: NewSessionError) -> Self {
+        Self::ScyllaSessionErr(err)
+    }
+}
+
 impl Display for VpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use VpError::*;
@@ -54,9 +62,13 @@ impl Display for VpError {
             InvalidUser => write!(f, "[Invalid User]: Invalid User Id"),
             ScyllaQueryErr(e) => write!(f, "[Scylla Query Error]: {}", e),
             ScyllaTypeErr(e) => write!(f, "[Scylla Row Type Error]: {}", e),
+            ScyllaSessionErr(e) => write!(f, "Unable to start New Scylla Session : {}", e),
             ParseIntErr(e) => write!(f, "[Error parsing Int]: {}", e),
             CanvasSizeMismatch => {
                 write!(f, "[Canvas Size Mismatch]: Enter (x,y) < Canvas Dimension")
+            }
+            NoUserFound => {
+                write!(f, "No User Found!")
             }
         }
     }

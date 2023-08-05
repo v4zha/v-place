@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use actix::{Actor, Addr, AsyncContext, Message};
 use actix_web::web;
 use actix_web_actors::ws;
-use scylla::FromRow;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -30,17 +29,6 @@ pub struct CanvasResponse<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct WaitTime {
     pub rem_wait: i64,
-}
-
-//ScyllaDb RowData
-#[derive(FromRow)]
-pub struct UserDetails {
-    pub id: Uuid,
-    pub name: String,
-    pub x: i32,     //u32 aan sherikkum , but CQL derive does'nt support : )
-    pub y: i32,     // same as above : )
-    pub color: i32, // sherikkum u8
-    pub last_placed: i64,
 }
 
 //AppState
