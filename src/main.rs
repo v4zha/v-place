@@ -12,7 +12,7 @@ use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
 
 use crate::handlers::p_handlers::{update_pixel, vplace};
-use crate::models::p_models::{AppState, PuSrv};
+use crate::models::p_models::{AppState, VpSrv};
 use crate::models::scylla_models::ScyllaBuilder;
 use crate::services::p_services::init_place;
 
@@ -36,7 +36,7 @@ async fn main() -> std::io::Result<()> {
     let host_port = format!("{}:{}", host, port);
     let redis_client = redis::Client::open(redis_url).expect("Error connecting to RedisDB");
     let redis = web::Data::new(redis_client);
-    let scylla_man = ScyllaBuilder::try_init(&scylla_url)
+    let scylla_man = ScyllaBuilder::try_init(&scylla_url, canvas_dim)
         .await
         .expect("Error initiating ScyllaBuilder")
         .try_build()
@@ -44,7 +44,7 @@ async fn main() -> std::io::Result<()> {
         .expect("Unable to Build ScyllaManger");
     let scylla = web::Data::new(scylla_man);
     let app_state = web::Data::new(AppState::new(canvas_id.into(), canvas_dim, cooldown));
-    let pu_srv = PuSrv::new().start();
+    let vp_srv = VpSrv::new().start();
     init_place(&app_state, &redis)
         .await
         .expect("Error Initialising Canvas");
@@ -58,12 +58,12 @@ async fn main() -> std::io::Result<()> {
     let cpus = num_cpus::get();
     HttpServer::new(move || {
         App::new()
-            .app_data(app_state.clone())
-            .app_data(web::Data::new(pu_srv.clone()))
-            .app_data(redis.clone())
-            .app_data(scylla.clone())
             .wrap(Logger::default())
             .wrap(Cors::permissive())
+            .app_data(app_state.clone())
+            .app_data(web::Data::new(vp_srv.clone()))
+            .app_data(redis.clone())
+            .app_data(scylla.clone())
             .service(vplace)
             .service(get_canvas)
             .service(update_pixel)

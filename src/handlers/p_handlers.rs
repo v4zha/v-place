@@ -9,7 +9,7 @@ use redis::Client;
 
 use crate::models::err_models::VpError;
 use crate::models::p_models::{
-    AppState, CanvasResponse, PuConnect, PuDisconnect, PuListener, PuRes, PuSrv, UpdatePixel,
+    AppState, CanvasResponse, UpdatePixel, VpConnect, VpDisconnect, VpListener, VpRes, VpSrv,
     WaitTime,
 };
 use crate::models::scylla_models::ScyllaManager;
@@ -40,10 +40,29 @@ async fn get_canvas(
 #[get("/vplace")]
 pub async fn vplace(
     req: HttpRequest,
-    srv_addr: web::Data<Addr<PuSrv<'_>>>,
+    srv_addr: web::Data<Addr<VpSrv<'_>>>,
     stream: web::Payload,
 ) -> impl Responder {
-    ws::start(PuListener::new(srv_addr.clone()), &req, stream)
+    ws::start(VpListener::new(srv_addr.clone()), &req, stream)
+}
+
+#[get("/pixel/{x}/{y}")]
+pub async fn pixel_info(
+    path: web::Path<(u32, u32)>,
+    app_data: web::Data<AppState<'_>>,
+    scylla: web::Data<ScyllaManager>,
+) -> actix_web::Result<impl Responder> {
+    let (x, y) = path.into_inner();
+    if x < app_data.canvas_dim && y < app_data.canvas_dim {
+        let res = scylla.get_pixel(x, y).await;
+        match res {
+            Ok(pixel) => Ok(HttpResponse::Ok().json(pixel)),
+            Err(VpError::NoPixelData) => Ok(HttpResponse::NotFound().body("no Pixel Data Found")),
+            Err(e) => Err(e)?,
+        }
+    } else {
+        Err(VpError::CanvasSizeMismatch)?
+    }
 }
 
 #[post("/pixel/update")]
@@ -52,7 +71,7 @@ async fn update_pixel(
     app_data: web::Data<AppState<'_>>,
     redis: web::Data<Client>,
     scylla: web::Data<ScyllaManager>,
-    pu_srv: web::Data<Addr<PuSrv<'_>>>,
+    pu_srv: web::Data<Addr<VpSrv<'_>>>,
 ) -> actix_web::Result<impl Responder> {
     let req = update_req.into_inner();
     let mut conn = redis
@@ -79,7 +98,8 @@ async fn update_pixel(
                         .await
                         .map_err(VpError::RedisErr)?;
                     // update user timestamp in scylladb
-                    scylla.set_user(&req).await?;
+                    //also update pixeldata : )
+                    scylla.update_db(&req).await?;
                     // uid and uname not send to client : )
                     // pixel based query will be added as different endpoint : )
                     pu_srv.do_send(UpdatePixel {
@@ -106,7 +126,7 @@ async fn update_pixel(
 }
 
 // websocket handlers
-impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for PuListener<'a> {
+impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for VpListener<'a> {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         use ws::Message::*;
         if let Ok(Ping(msg)) = msg {
@@ -114,10 +134,10 @@ impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for PuListener<'a
         }
     }
 }
-impl Handler<PuConnect<'_>> for PuSrv<'_> {
+impl Handler<VpConnect<'_>> for VpSrv<'_> {
     type Result = ();
 
-    fn handle(&mut self, msg: PuConnect, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: VpConnect, _ctx: &mut Self::Context) -> Self::Result {
         self.listeners.insert(msg.0.clone());
         log::debug!(
             "New client connection.Total connection count : {}",
@@ -125,10 +145,10 @@ impl Handler<PuConnect<'_>> for PuSrv<'_> {
         );
     }
 }
-impl Handler<PuDisconnect<'_>> for PuSrv<'_> {
+impl Handler<VpDisconnect<'_>> for VpSrv<'_> {
     type Result = ();
 
-    fn handle(&mut self, msg: PuDisconnect, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: VpDisconnect, _ctx: &mut Self::Context) -> Self::Result {
         self.listeners.remove(&msg.0);
         log::debug!(
             "Client Disconnected.Total connection count : {}",
@@ -137,7 +157,7 @@ impl Handler<PuDisconnect<'_>> for PuSrv<'_> {
     }
 }
 
-impl Handler<UpdatePixel> for PuSrv<'_> {
+impl Handler<UpdatePixel> for VpSrv<'_> {
     type Result = ();
 
     fn handle(&mut self, msg: UpdatePixel, _ctx: &mut Self::Context) -> Self::Result {
@@ -145,15 +165,15 @@ impl Handler<UpdatePixel> for PuSrv<'_> {
             let msg = Cow::from(res);
             self.listeners
                 .iter()
-                .for_each(|addr| addr.do_send(PuRes(msg.clone())));
+                .for_each(|addr| addr.do_send(VpRes(msg.clone())));
         }
     }
 }
 
-impl Handler<PuRes<'_>> for PuListener<'_> {
+impl Handler<VpRes<'_>> for VpListener<'_> {
     type Result = ();
 
-    fn handle(&mut self, msg: PuRes, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: VpRes, ctx: &mut Self::Context) -> Self::Result {
         ctx.text(msg.0.as_ref());
     }
 }

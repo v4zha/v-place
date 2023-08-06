@@ -51,5 +51,4 @@ To install and run the v-place api, follow the steps below:
 ## Todos
 - v-place UI
 - user Auth and Validation
-- store per pixel update data
 - log all updates

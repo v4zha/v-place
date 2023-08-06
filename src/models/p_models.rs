@@ -49,23 +49,23 @@ impl<'a> AppState<'a> {
 }
 
 // Pixel Update Server Actor
-pub struct PuSrv<'a: 'static> {
-    pub listeners: HashSet<Addr<PuListener<'a>>>,
+pub struct VpSrv<'a: 'static> {
+    pub listeners: HashSet<Addr<VpListener<'a>>>,
 }
-impl<'a> PuSrv<'a> {
+impl<'a> VpSrv<'a> {
     pub fn new() -> Self {
-        PuSrv {
+        VpSrv {
             listeners: HashSet::new(),
         }
     }
 }
 // Pixel Update Listener Actor
-pub struct PuListener<'a: 'static> {
-    srv_addr: web::Data<Addr<PuSrv<'a>>>,
+pub struct VpListener<'a: 'static> {
+    srv_addr: web::Data<Addr<VpSrv<'a>>>,
     addr: Option<Addr<Self>>,
 }
-impl<'a> PuListener<'a> {
-    pub fn new(srv_addr: web::Data<Addr<PuSrv<'a>>>) -> Self {
+impl<'a> VpListener<'a> {
+    pub fn new(srv_addr: web::Data<Addr<VpSrv<'a>>>) -> Self {
         Self {
             srv_addr,
             addr: None,
@@ -75,29 +75,29 @@ impl<'a> PuListener<'a> {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct PuConnect<'a: 'static>(pub Addr<PuListener<'a>>);
+pub struct VpConnect<'a: 'static>(pub Addr<VpListener<'a>>);
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct PuDisconnect<'a: 'static>(pub Addr<PuListener<'a>>);
+pub struct VpDisconnect<'a: 'static>(pub Addr<VpListener<'a>>);
 
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct PuRes<'a>(pub Cow<'a, str>);
+pub struct VpRes<'a>(pub Cow<'a, str>);
 
-impl<'a> Actor for PuListener<'a> {
+impl<'a> Actor for VpListener<'a> {
     type Context = ws::WebsocketContext<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
         self.addr = Some(addr.clone());
-        self.srv_addr.do_send(PuConnect(addr));
+        self.srv_addr.do_send(VpConnect(addr));
     }
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         if let Some(addr) = &self.addr {
-            self.srv_addr.do_send(PuDisconnect(addr.clone()))
+            self.srv_addr.do_send(VpDisconnect(addr.clone()))
         }
     }
 }
-impl<'a> Actor for PuSrv<'a> {
+impl<'a> Actor for VpSrv<'a> {
     type Context = actix::Context<Self>;
 }

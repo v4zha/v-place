@@ -17,6 +17,7 @@ pub enum VpError {
     ScyllaTypeErr(FirstRowTypedError),
     ScyllaSessionErr(NewSessionError),
     ParseIntErr(TryFromIntError),
+    NoPixelData,
 }
 impl Error for VpError {}
 
@@ -66,6 +67,7 @@ impl Display for VpError {
             CanvasSizeMismatch => {
                 write!(f, "[Canvas Size Mismatch]: Enter (x,y) < Canvas Dimension")
             }
+            NoPixelData => write!(f, "No pixel data found"),
         }
     }
 }
