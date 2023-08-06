@@ -1,7 +1,7 @@
 use chrono::Utc;
 use scylla::prepared_statement::PreparedStatement;
 use scylla::transport::query_result::FirstRowTypedError;
-use scylla::{FromRow, IntoUserType, Session, SessionBuilder};
+use scylla::{FromRow, FromUserType, IntoUserType, Session, SessionBuilder};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ impl ScyllaBuilder {
 
         //Store All Pixel data
         // UDT to store pixel_data
-        self.session.query("CREATE TYPE IF NOT EXISTS vplace.pixel_data (uname text,last_placed timestamp ,color int)",&[]).await?;
+        self.session.query("CREATE TYPE IF NOT EXISTS vplace.pixel_data (uname text,color int,last_placed timestamp)",&[]).await?;
         //table to store all pixel update data in canvas
         // Divide the canvas into 4 parts
         //       ---------------
@@ -42,7 +42,7 @@ impl ScyllaBuilder {
         //       --------------
         // each part is row with pixel details as column of the form (x,y):pixel_data
         // where pixel_data is UDT defined above : ) .
-        self.session.query("CREATE TABLE IF NOT EXISTS vplace.canvas ( canvas_part text,pixel map<frozen<tuple<int, int>>, frozen<pixel_data>>,PRIMARY KEY (canvas_part))",&[]).await?;
+        self.session.query("CREATE TABLE IF NOT EXISTS vplace.canvas ( canvas_part text,x int ,y int,data frozen<pixel_data>,PRIMARY KEY (canvas_part,x,y))",&[]).await?;
         Ok(())
     }
 
@@ -55,11 +55,11 @@ impl ScyllaBuilder {
             .await?;
         let insert_pixel = self
             .session
-            .prepare("INSERT INTO vplace.canvas (canvas_part,pixel) VALUES (?,{(?,?):?})")
+            .prepare("INSERT INTO vplace.canvas (canvas_part,x,y,data) VALUES (?, ?, ?, ?)")
             .await?;
         let get_pixel = self
             .session
-            .prepare("SELECT pixel FROM vplace.canvas WHERE canvas_part = ? AND pixel CONTAINS KEY (?,?)")
+            .prepare("SELECT data FROM vplace.canvas WHERE canvas_part = ? AND x=? AND y=?")
             .await?;
         Ok(ScyllaManager {
             session: self.session,
@@ -97,16 +97,18 @@ impl ScyllaManager {
         let (ix, iy) = (i32::try_from(req.loc.0)?, i32::try_from(req.loc.1)?);
         // infallible :)
         let color = i32::try_from(req.color).unwrap();
-        let last_placed = Utc::now().timestamp();
+        //already checked in handler
         let uname = req.uname.as_ref().ok_or_else(|| VpError::InvalidUser)?;
+        let last_placed = Utc::now().timestamp();
 
         // add user update
-        let user_update = self
-            .session
-            .execute(&self.insert_user, (req.uid, uname, ix, iy, color));
+        let user_update = self.session.execute(
+            &self.insert_user,
+            (req.uid, uname, ix, iy, color, last_placed),
+        );
 
         // add  pixel update
-        let pindex = match (req.loc.0 <= self.dim_mid, req.loc.0 <= self.dim_mid) {
+        let pindex = match (req.loc.0 <= self.dim_mid, req.loc.1 <= self.dim_mid) {
             (true, true) => 0,
             (true, false) => 1,
             (false, true) => 2,
@@ -137,9 +139,9 @@ impl ScyllaManager {
             .session
             .execute(&self.get_pixel, (self.canvas_part[pindex], ix, iy))
             .await?;
-        let res = rows.first_row_typed::<PixelData>();
+        let res = rows.first_row_typed::<(PixelData,)>();
         match res {
-            Ok(res) => Ok(res),
+            Ok(res) => Ok(res.0),
             Err(FirstRowTypedError::RowsEmpty) => Err(VpError::NoPixelData),
             Err(e) => Err(VpError::ScyllaTypeErr(e)),
         }
@@ -157,7 +159,7 @@ pub struct UserDetails {
     pub last_placed: i64,
 }
 
-#[derive(IntoUserType, FromRow, Serialize)]
+#[derive(IntoUserType, FromUserType, Serialize)]
 pub struct PixelData {
     pub uname: String,
     pub color: i32,

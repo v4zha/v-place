@@ -7,6 +7,7 @@
 
 ## Features
 
+- Real Time Per Pixel Update Info 
 - 16 color support
 - cooldown validation    
 - ablity to update cooldown and canvas dimension.

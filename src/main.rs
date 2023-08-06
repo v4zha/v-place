@@ -11,7 +11,7 @@ use dotenvy::dotenv;
 use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
 
-use crate::handlers::p_handlers::{update_pixel, vplace};
+use crate::handlers::p_handlers::{pixel_info, update_pixel, vplace};
 use crate::models::p_models::{AppState, VpSrv};
 use crate::models::scylla_models::ScyllaBuilder;
 use crate::services::p_services::init_place;
@@ -67,6 +67,7 @@ async fn main() -> std::io::Result<()> {
             .service(vplace)
             .service(get_canvas)
             .service(update_pixel)
+            .service(pixel_info)
     })
     .bind(host_port)?
     .workers(cpus * 2)
