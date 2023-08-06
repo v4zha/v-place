@@ -6,7 +6,7 @@ use std::env;
 use actix::Actor;
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
-use actix_web::{web, App, HttpServer};
+use actix_web::{http, web, App, HttpServer};
 use dotenvy::dotenv;
 use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
@@ -59,7 +59,15 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
-            .wrap(Cors::permissive())
+            // use only in testing : )
+            .wrap(
+                Cors::default()
+                    .allowed_origin("*")
+                    .allowed_methods(vec!["GET", "POST"])
+                    .allowed_headers(vec![http::header::AUTHORIZATION, http::header::ACCEPT])
+                    .allowed_header(http::header::CONTENT_TYPE)
+                    .max_age(3600),
+            )
             .app_data(app_state.clone())
             .app_data(web::Data::new(vp_srv.clone()))
             .app_data(redis.clone())
