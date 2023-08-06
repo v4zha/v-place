@@ -5,6 +5,7 @@ use actix_web::{get, post, web, Either, HttpRequest, HttpResponse, Responder};
 use actix_web_actors::ws;
 use base64::engine::general_purpose;
 use base64::Engine;
+use futures::TryFutureExt;
 use redis::Client;
 
 use crate::models::err_models::VpError;
@@ -88,18 +89,23 @@ async fn update_pixel(
                 if time_diff.ge(&cd) {
                     let offset: u32 = req.loc.1 * app_data.canvas_dim + req.loc.0;
                     // set redis bitmap
-                    redis::cmd("bitfield")
-                        .arg(app_data.canvas_id.as_bytes())
-                        .arg("SET")
-                        .arg("u4")
-                        .arg(format!("#{}", offset))
-                        .arg(req.color)
-                        .query_async(&mut conn)
-                        .await
-                        .map_err(VpError::RedisErr)?;
+                    let redis_fut = async {
+                        redis::cmd("bitfield")
+                            .arg(app_data.canvas_id.as_bytes())
+                            .arg("SET")
+                            .arg("u4")
+                            .arg(format!("#{}", offset))
+                            .arg(req.color)
+                            .query_async::<_, ()>(&mut conn)
+                            .await
+                    }
+                    .map_err(VpError::RedisErr);
                     // update user timestamp in scylladb
                     //also update pixeldata : )
-                    scylla.update_db(&req).await?;
+                    let scylla_fut = scylla.update_db(&req);
+
+                    //execute both  database fut : )
+                    tokio::try_join!(redis_fut, scylla_fut)?;
                     // uid and uname not send to client : )
                     // pixel based query will be added as different endpoint : )
                     pu_srv.do_send(UpdatePixel {
