@@ -31,11 +31,6 @@ impl From<QueryError> for VpError {
         Self::ScyllaQueryErr(err)
     }
 }
-impl From<FirstRowTypedError> for VpError {
-    fn from(err: FirstRowTypedError) -> Self {
-        Self::ScyllaTypeErr(err)
-    }
-}
 
 impl From<TryFromIntError> for VpError {
     fn from(err: TryFromIntError) -> Self {
