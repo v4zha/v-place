@@ -16,7 +16,7 @@ services:
       - vplace_network
 
   v_place:
-    build: .
+    image: v4zha/vplace:latest
     ports:
       - "8080:8080"
     networks:
