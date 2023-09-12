@@ -97,8 +97,7 @@ async fn update_pixel(
                             .arg(format!("#{}", offset))
                             .arg(req.color)
                             .query_async::<_, ()>(&mut conn)
-                            .await;
-                        log::debug!("updated color : {} for location ({},{}) ",req.color,req.loc.0,req.loc.1);
+                            .await
                     }
                     .map_err(VpError::RedisErr);
                     // update user timestamp in scylladb
@@ -109,6 +108,7 @@ async fn update_pixel(
                     tokio::try_join!(redis_fut, scylla_fut)?;
                     // uid and uname not send to client : )
                     // pixel based query will be added as different endpoint : )
+                    log::debug!("updated color : {} for location ({},{}) ",req.color,req.loc.0,req.loc.1);
                     pu_srv.do_send(UpdatePixel {
                         uid: None,
                         uname: None,
