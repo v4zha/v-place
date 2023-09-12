@@ -97,7 +97,8 @@ async fn update_pixel(
                             .arg(format!("#{}", offset))
                             .arg(req.color)
                             .query_async::<_, ()>(&mut conn)
-                            .await
+                            .await;
+                        log::debug!("updated color : {} for location ({},{}) ",req.color,req.loc.0,req.loc.1);
                     }
                     .map_err(VpError::RedisErr);
                     // update user timestamp in scylladb
