@@ -87,7 +87,7 @@ async fn update_pixel(
                     diff_last_placed(&req.uid.unwrap(), app_data.cooldown, &scylla).await?;
                 let cd = i64::try_from(app_data.cooldown).map_err(VpError::ParseIntErr)?;
                 if time_diff.ge(&cd) {
-                    let offset: u32 = req.loc.1 * app_data.canvas_dim + req.loc.0;
+                    let offset: u32 = req.loc.0 * app_data.canvas_dim + req.loc.1;
                     // set redis bitmap
                     let redis_fut = async {
                         redis::cmd("bitfield")
