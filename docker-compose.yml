@@ -5,13 +5,13 @@ services:
     image: redis:latest
     networks:
       - vplace_network
-    # ports:
-    #   - "6379:6379"
+    ports:
+      - "6379:6379"
 
   scylla:
     image: scylladb/scylla
-    # ports:
-    #   - "9042:9042"
+    ports:
+      - "9042:9042"
     networks:
       - vplace_network
 
@@ -25,7 +25,6 @@ services:
       - redis
       - scylla
     restart: always
-
 
 networks:
   vplace_network:
