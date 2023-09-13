@@ -7,7 +7,6 @@ use actix_web_actors::ws;
 use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use base64::engine::general_purpose;
 use base64::Engine;
-use futures::TryFutureExt;
 use redis::Client;
 
 use crate::models::err_models::VpError;
@@ -16,7 +15,7 @@ use crate::models::p_models::{
     VpSrv, WaitTime,
 };
 use crate::models::scylla_models::ScyllaManager;
-use crate::services::p_services::{diff_last_placed, reset_place};
+use crate::services::p_services::{diff_last_placed, reset_place, update_place};
 
 #[get("/canvas")]
 async fn get_canvas(
@@ -84,8 +83,8 @@ async fn reset_canvas(
     }
 }
 
-#[post("/pixel/update")]
-async fn update_pixel(
+#[post("/admin/pixel/update")]
+async fn admin_update_pixel(
     http_req: HttpRequest,
     update_req: web::Json<UpdatePixel>,
     app_data: web::Data<AppState<'_>>,
@@ -93,64 +92,34 @@ async fn update_pixel(
     scylla: web::Data<ScyllaManager>,
     pu_srv: web::Data<Addr<VpSrv<'_>>>,
 ) -> actix_web::Result<impl Responder> {
-    let req = update_req.into_inner();
-    let mut conn = redis
-        .get_tokio_connection_manager()
-        .await
-        .map_err(VpError::RedisErr)?;
-    // color size-> 16 colors [0,15], max val -> 15
-    if req.color <= 15 {
-        if req.loc.0 < app_data.canvas_dim && req.loc.1 < app_data.canvas_dim {
-            let auth = Authorization::<Bearer>::parse(&http_req)?.into_scheme();
-            let cd = i64::try_from(app_data.cooldown).map_err(VpError::ParseIntErr)?;
-            let time_diff: i64 = if auth.token().eq(&app_data.admin_token) {
-                diff_last_placed(&req.uid, app_data.cooldown, &scylla).await?
-            } else {
-                cd
-            };
-            if time_diff.ge(&cd) {
-                let offset: u32 = req.loc.0 * app_data.canvas_dim + req.loc.1;
-                // set redis bitmap
-                let redis_fut = async {
-                    redis::cmd("bitfield")
-                        .arg(app_data.canvas_id.as_bytes())
-                        .arg("SET")
-                        .arg("u4")
-                        .arg(format!("#{}", offset))
-                        .arg(req.color)
-                        .query_async::<_, ()>(&mut conn)
-                        .await
-                }
-                .map_err(VpError::RedisErr);
-                // update user timestamp in scylladb
-                //also update pixeldata : )
-                let scylla_fut = scylla.update_db(&req);
-
-                //execute both  database fut : )
-                tokio::try_join!(redis_fut, scylla_fut)?;
-                // uid and uname not send to client : )
-                // pixel based query will be added as different endpoint : )
-                log::debug!(
-                    "updated color : {} for location ({},{}) ",
-                    req.color,
-                    req.loc.0,
-                    req.loc.1
-                );
-                pu_srv.do_send(PlaceUpdate {
-                    loc: req.loc,
-                    color: req.color,
-                });
-                Ok(Either::Left(HttpResponse::Ok()))
-            } else {
-                Ok(Either::Right(HttpResponse::Forbidden().json(WaitTime {
-                    rem_wait: cd - time_diff,
-                })))
-            }
-        } else {
-            Err(VpError::CanvasSizeMismatch)?
-        }
+    let auth = Authorization::<Bearer>::parse(&http_req)?.into_scheme();
+    if auth.token().eq(&app_data.admin_token) {
+        let u_req = update_req.into_inner();
+        update_place(&u_req, &app_data, &redis, &scylla, &pu_srv).await?;
+        Ok(HttpResponse::Ok())
     } else {
-        Err(VpError::ColorSizeMismatch)?
+        Ok(HttpResponse::Unauthorized())
+    }
+}
+
+#[post("/pixel/update")]
+async fn update_pixel(
+    update_req: web::Json<UpdatePixel>,
+    app_data: web::Data<AppState<'_>>,
+    redis: web::Data<Client>,
+    scylla: web::Data<ScyllaManager>,
+    pu_srv: web::Data<Addr<VpSrv<'_>>>,
+) -> actix_web::Result<impl Responder> {
+    let u_req = update_req.into_inner();
+    let cooldown = i64::try_from(app_data.cooldown).map_err(VpError::ParseIntErr)?;
+    let time_diff: i64 = diff_last_placed(&u_req.uid, app_data.cooldown, &scylla).await?;
+    if time_diff.ge(&cooldown) {
+        update_place(&u_req, &app_data, &redis, &scylla, &pu_srv).await?;
+        Ok(Either::Left(HttpResponse::Ok()))
+    } else {
+        Ok(Either::Right(HttpResponse::Forbidden().json(WaitTime {
+            rem_wait: cooldown - time_diff,
+        })))
     }
 }
 

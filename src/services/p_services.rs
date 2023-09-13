@@ -1,9 +1,11 @@
+use actix::Addr;
 use chrono::Utc;
+use futures::TryFutureExt;
 use redis::Client;
 use uuid::Uuid;
 
 use crate::models::err_models::VpError;
-use crate::models::p_models::AppState;
+use crate::models::p_models::{AppState, PlaceUpdate, UpdatePixel, VpSrv};
 use crate::models::scylla_models::ScyllaManager;
 
 pub async fn init_place(app_state: &AppState<'_>, redis: &Client) -> Result<(), VpError> {
@@ -45,6 +47,61 @@ pub async fn reset_place(
     scylla.reset_db().await?;
     log::debug!("[SycallaDb] : vplace.player & vplace.pixel_data Reset");
     Ok(())
+}
+
+pub async fn update_place(
+    u_req: &UpdatePixel,
+    app_data: &AppState<'_>,
+    redis: &Client,
+    scylla: &ScyllaManager,
+
+    pu_srv: &Addr<VpSrv<'_>>,
+) -> Result<(), VpError> {
+    // color size-> 16 colors [0,15], max val -> 15
+    if u_req.color <= 15 {
+        if u_req.loc.0 < app_data.canvas_dim && u_req.loc.1 < app_data.canvas_dim {
+            let offset: u32 = u_req.loc.0 * app_data.canvas_dim + u_req.loc.1;
+            // set redis bitmap
+            let mut conn = redis
+                .get_tokio_connection_manager()
+                .await
+                .map_err(VpError::RedisErr)?;
+            let redis_fut = async {
+                redis::cmd("bitfield")
+                    .arg(app_data.canvas_id.as_bytes())
+                    .arg("SET")
+                    .arg("u4")
+                    .arg(format!("#{}", offset))
+                    .arg(u_req.color)
+                    .query_async::<_, ()>(&mut conn)
+                    .await
+            }
+            .map_err(VpError::RedisErr);
+            // update user timestamp in scylladb
+            //also update pixeldata : )
+            let scylla_fut = scylla.update_db(u_req);
+
+            //execute both  database fut : )
+            tokio::try_join!(redis_fut, scylla_fut)?;
+            // uid and uname not send to client : )
+            // pixel based query will be added as different endpoint : )
+            log::debug!(
+                "updated color : {} for location ({},{}) ",
+                u_req.color,
+                u_req.loc.0,
+                u_req.loc.1
+            );
+            pu_srv.do_send(PlaceUpdate {
+                loc: u_req.loc,
+                color: u_req.color,
+            });
+            Ok(())
+        } else {
+            Err(VpError::CanvasSizeMismatch)?
+        }
+    } else {
+        Err(VpError::ColorSizeMismatch)?
+    }
 }
 
 pub async fn diff_last_placed(
