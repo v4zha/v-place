@@ -21,6 +21,7 @@ redis = { version = "^0.23", default-features = false, features = [
 ] }
 scylla = "^0.9"
 actix-cors = "0.6"
+actix-web-httpauth="^0.8"
 chrono = { version = "^0.4", default-features = false }
 mimalloc = { version = "^0.1", default-features = false }
 num_cpus = "^1.16"

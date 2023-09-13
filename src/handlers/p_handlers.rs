@@ -1,8 +1,10 @@
 use std::borrow::Cow;
 
 use actix::{Addr, Handler, StreamHandler};
+use actix_web::http::header::Header;
 use actix_web::{get, post, web, Either, HttpRequest, HttpResponse, Responder};
 use actix_web_actors::ws;
+use actix_web_httpauth::headers::authorization::{Authorization, Bearer};
 use base64::engine::general_purpose;
 use base64::Engine;
 use futures::TryFutureExt;
@@ -10,11 +12,11 @@ use redis::Client;
 
 use crate::models::err_models::VpError;
 use crate::models::p_models::{
-    AppState, CanvasResponse, UpdatePixel, VpConnect, VpDisconnect, VpListener, VpRes, VpSrv,
-    WaitTime,
+    AppState, CanvasResponse, PlaceUpdate, UpdatePixel, VpConnect, VpDisconnect, VpListener, VpRes,
+    VpSrv, WaitTime,
 };
 use crate::models::scylla_models::ScyllaManager;
-use crate::services::p_services::diff_last_placed;
+use crate::services::p_services::{diff_last_placed, reset_place};
 
 #[get("/canvas")]
 async fn get_canvas(
@@ -66,8 +68,25 @@ pub async fn pixel_info(
     }
 }
 
+#[get("/reset")]
+async fn reset_canvas(
+    req: HttpRequest,
+    app_data: web::Data<AppState<'_>>,
+    redis: web::Data<Client>,
+    scylla: web::Data<ScyllaManager>,
+) -> actix_web::Result<impl Responder> {
+    let auth = Authorization::<Bearer>::parse(&req)?.into_scheme();
+    if auth.token().eq(&app_data.admin_token) {
+        reset_place(&app_data, &redis, &scylla).await?;
+        Ok(HttpResponse::Ok())
+    } else {
+        Ok(HttpResponse::Unauthorized())
+    }
+}
+
 #[post("/pixel/update")]
 async fn update_pixel(
+    http_req: HttpRequest,
     update_req: web::Json<UpdatePixel>,
     app_data: web::Data<AppState<'_>>,
     redis: web::Data<Client>,
@@ -82,47 +101,50 @@ async fn update_pixel(
     // color size-> 16 colors [0,15], max val -> 15
     if req.color <= 15 {
         if req.loc.0 < app_data.canvas_dim && req.loc.1 < app_data.canvas_dim {
-            if req.uid.is_some() && req.uname.is_some() {
-                let time_diff: i64 =
-                    diff_last_placed(&req.uid.unwrap(), app_data.cooldown, &scylla).await?;
-                let cd = i64::try_from(app_data.cooldown).map_err(VpError::ParseIntErr)?;
-                if time_diff.ge(&cd) {
-                    let offset: u32 = req.loc.0 * app_data.canvas_dim + req.loc.1;
-                    // set redis bitmap
-                    let redis_fut = async {
-                        redis::cmd("bitfield")
-                            .arg(app_data.canvas_id.as_bytes())
-                            .arg("SET")
-                            .arg("u4")
-                            .arg(format!("#{}", offset))
-                            .arg(req.color)
-                            .query_async::<_, ()>(&mut conn)
-                            .await
-                    }
-                    .map_err(VpError::RedisErr);
-                    // update user timestamp in scylladb
-                    //also update pixeldata : )
-                    let scylla_fut = scylla.update_db(&req);
-
-                    //execute both  database fut : )
-                    tokio::try_join!(redis_fut, scylla_fut)?;
-                    // uid and uname not send to client : )
-                    // pixel based query will be added as different endpoint : )
-                    log::debug!("updated color : {} for location ({},{}) ",req.color,req.loc.0,req.loc.1);
-                    pu_srv.do_send(UpdatePixel {
-                        uid: None,
-                        uname: None,
-                        loc: req.loc,
-                        color: req.color,
-                    });
-                    Ok(Either::Left(HttpResponse::Ok()))
-                } else {
-                    Ok(Either::Right(HttpResponse::Forbidden().json(WaitTime {
-                        rem_wait: cd - time_diff,
-                    })))
-                }
+            let auth = Authorization::<Bearer>::parse(&http_req)?.into_scheme();
+            let cd = i64::try_from(app_data.cooldown).map_err(VpError::ParseIntErr)?;
+            let time_diff: i64 = if auth.token().eq(&app_data.admin_token) {
+                diff_last_placed(&req.uid, app_data.cooldown, &scylla).await?
             } else {
-                Err(VpError::InvalidUser)?
+                cd
+            };
+            if time_diff.ge(&cd) {
+                let offset: u32 = req.loc.0 * app_data.canvas_dim + req.loc.1;
+                // set redis bitmap
+                let redis_fut = async {
+                    redis::cmd("bitfield")
+                        .arg(app_data.canvas_id.as_bytes())
+                        .arg("SET")
+                        .arg("u4")
+                        .arg(format!("#{}", offset))
+                        .arg(req.color)
+                        .query_async::<_, ()>(&mut conn)
+                        .await
+                }
+                .map_err(VpError::RedisErr);
+                // update user timestamp in scylladb
+                //also update pixeldata : )
+                let scylla_fut = scylla.update_db(&req);
+
+                //execute both  database fut : )
+                tokio::try_join!(redis_fut, scylla_fut)?;
+                // uid and uname not send to client : )
+                // pixel based query will be added as different endpoint : )
+                log::debug!(
+                    "updated color : {} for location ({},{}) ",
+                    req.color,
+                    req.loc.0,
+                    req.loc.1
+                );
+                pu_srv.do_send(PlaceUpdate {
+                    loc: req.loc,
+                    color: req.color,
+                });
+                Ok(Either::Left(HttpResponse::Ok()))
+            } else {
+                Ok(Either::Right(HttpResponse::Forbidden().json(WaitTime {
+                    rem_wait: cd - time_diff,
+                })))
             }
         } else {
             Err(VpError::CanvasSizeMismatch)?
@@ -164,10 +186,10 @@ impl Handler<VpDisconnect<'_>> for VpSrv<'_> {
     }
 }
 
-impl Handler<UpdatePixel> for VpSrv<'_> {
+impl Handler<PlaceUpdate> for VpSrv<'_> {
     type Result = ();
 
-    fn handle(&mut self, msg: UpdatePixel, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: PlaceUpdate, _ctx: &mut Self::Context) -> Self::Result {
         if let Ok(res) = serde_json::to_string(&msg) {
             let msg = Cow::from(res);
             self.listeners

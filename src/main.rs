@@ -11,7 +11,7 @@ use dotenvy::dotenv;
 use handlers::p_handlers::get_canvas;
 use mimalloc::MiMalloc;
 
-use crate::handlers::p_handlers::{pixel_info, update_pixel, vplace};
+use crate::handlers::p_handlers::{pixel_info, reset_canvas, update_pixel, vplace};
 use crate::models::p_models::{AppState, VpSrv};
 use crate::models::scylla_models::ScyllaBuilder;
 use crate::services::p_services::init_place;
@@ -33,6 +33,7 @@ async fn main() -> std::io::Result<()> {
         env::var("CANVAS_DIM").map_or(500, |count| count.parse::<u32>().unwrap_or(500));
     let canvas_id = env::var("CANVAS_ID").unwrap_or_else(|_| "vplace_1".to_string());
     let cooldown = env::var("COOLDOWN").map_or(60, |c| c.parse::<usize>().unwrap_or(60));
+    let admin_token = env::var("ADMIN_TOKEN").expect("Env Var ADMIN_TOKEN not found");
     let host_port = format!("{}:{}", host, port);
     let redis_client = redis::Client::open(redis_url).expect("Error connecting to RedisDB");
     let redis = web::Data::new(redis_client);
@@ -43,7 +44,12 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Unable to Build ScyllaManger");
     let scylla = web::Data::new(scylla_man);
-    let app_state = web::Data::new(AppState::new(canvas_id.into(), canvas_dim, cooldown));
+    let app_state = web::Data::new(AppState::new(
+        admin_token.into(),
+        canvas_id.into(),
+        canvas_dim,
+        cooldown,
+    ));
     let vp_srv = VpSrv::new().start();
     init_place(&app_state, &redis)
         .await
@@ -65,6 +71,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(vp_srv.clone()))
             .app_data(redis.clone())
             .app_data(scylla.clone())
+            .service(reset_canvas)
             .service(vplace)
             .service(get_canvas)
             .service(update_pixel)

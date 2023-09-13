@@ -11,6 +11,7 @@
 - 16 color support
 - cooldown validation    
 - ablity to update cooldown and canvas dimension.
+- admin can bypass cooldown and reset canvas
 - REST Api build using [actix-web](https://actix.rs/)
 - realtime canvas update based on websockets.
 - [Redis](https://redis.io/) bitfild for storing canvas data (4bits/pixel).
@@ -43,6 +44,7 @@ To install and run the v-place api, follow the steps below:
     CANVAS_DIM=500 #Square canvas (dim * dim)
     CANVAS_ID=vplace_1
     COOLDOWN=30 #cooldown in seconds
+    ADMIN_TOKEN="enter secret admin token"
     ```
 4. run docker contrainer using docker compose
     ```

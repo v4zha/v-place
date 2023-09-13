@@ -98,13 +98,12 @@ impl ScyllaManager {
         // infallible :)
         let color = i32::try_from(req.color).unwrap();
         //already checked in handler
-        let uname = req.uname.as_ref().ok_or_else(|| VpError::InvalidUser)?;
         let last_placed = Utc::now().timestamp();
 
         // add user update
         let user_update = self.session.execute(
             &self.insert_user,
-            (req.uid, uname, ix, iy, color, last_placed),
+            (req.uid, req.uname.as_str(), ix, iy, color, last_placed),
         );
 
         // add  pixel update
@@ -115,7 +114,7 @@ impl ScyllaManager {
             (false, false) => 3,
         };
         let pixel_data = PixelData {
-            uname: uname.to_string(),
+            uname: req.uname.to_string(),
             color,
             last_placed,
         };
@@ -145,6 +144,15 @@ impl ScyllaManager {
             Err(FirstRowTypedError::RowsEmpty) => Err(VpError::NoPixelData),
             Err(e) => Err(VpError::ScyllaTypeErr(e)),
         }
+    }
+    pub async fn reset_db(&self) -> Result<(), VpError> {
+        self.session
+            .query("TRUNCATE TABLE vplace.player", &[])
+            .await?;
+        self.session
+            .query("TRUNCATE TABLE vplace.pixel_data", &[])
+            .await?;
+        Ok(())
     }
 }
 

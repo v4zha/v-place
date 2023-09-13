@@ -7,12 +7,18 @@ use actix_web_actors::ws;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Message)]
-#[rtype(result = "()")]
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct UpdatePixel {
-    pub uid: Option<Uuid>,
-    pub uname: Option<String>,
+    pub uid: Uuid,
+    pub uname: String,
+    // coordinates : (x,y)
+    pub loc: (u32, u32),
+    pub color: u8,
+}
+
+#[derive(Message, Serialize)]
+#[rtype(result = "()")]
+pub struct PlaceUpdate {
     // coordinates : (x,y)
     pub loc: (u32, u32),
     pub color: u8,
@@ -35,12 +41,20 @@ pub struct WaitTime {
 pub struct AppState<'a> {
     pub canvas_id: Cow<'a, str>,
     // dim*dim is the the real dimension of canvas
+    //admin Id
+    pub admin_token: Cow<'a, str>,
     pub canvas_dim: u32,
     pub cooldown: usize,
 }
 impl<'a> AppState<'a> {
-    pub fn new(canvas_id: Cow<'a, str>, canvas_dim: u32, cooldown: usize) -> Self {
+    pub fn new(
+        admin_token: Cow<'a, str>,
+        canvas_id: Cow<'a, str>,
+        canvas_dim: u32,
+        cooldown: usize,
+    ) -> Self {
         Self {
+            admin_token,
             canvas_id,
             canvas_dim,
             cooldown,
