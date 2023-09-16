@@ -29,6 +29,7 @@ pub struct CanvasResponse<'a> {
     pub id: &'a str,
     pub dim: u32,
     pub canvas: &'a str,
+    pub cooldown: usize,
 }
 
 #[derive(Serialize)]

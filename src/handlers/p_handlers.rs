@@ -36,6 +36,7 @@ async fn get_canvas(
         id: app_data.canvas_id.as_ref(),
         dim: app_data.canvas_dim,
         canvas: &resb64,
+        cooldown: app_data.cooldown,
     }))
 }
 
