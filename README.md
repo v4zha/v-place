@@ -4,6 +4,8 @@
 
 ![vplace](assets/vplace.png)
 
+![canvas_demo](assets/place_canvas.jpg)
+
 
 ## Features
 
